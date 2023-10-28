@@ -32,13 +32,13 @@ class Sensor_6000_16B_IS:
             sensorPort.timeout = 0.2  # needs to be long enough to wake barometer and get response
             sensorPort.open()
 
-            sensorModelNumber = self.sendCommand('*0100MN')
+            sensorModelNumber = self.__sendCommand('*0100MN')
             if "6000-16B-IS" not in sensorModelNumber:
                 continue
 
             baroSerialNumber = "BLANK"
             while not baroSerialNumber.isnumeric():
-                baroSerialNumber = self.sendCommand('*0100SN')[3:]
+                baroSerialNumber = self.__sendCommand('*0100SN')[3:]
 
             if baroSerialNumber == self.serial_num:
                 self.sensorPort = sensorPort
@@ -56,7 +56,7 @@ class Sensor_6000_16B_IS:
         # check fixed barometer settings, quit if not OK
         for configSetting in fixedSettingsList:
             configCmd = '*0100' + configSetting[0:2]
-            configResponse = self.sendCommand(configCmd)
+            configResponse = self.__sendCommand(configCmd)
 
             if configResponse not in fixedSettingsList:
                 raise Exception(f"Configuration {configSetting} is not set correctly on {self.serial_num}")
@@ -64,10 +64,10 @@ class Sensor_6000_16B_IS:
         # check configurable barometer settings, set if not OK
         for configSetting in configurableSettingsList:
             configCmd = '*0100' + configSetting[0:2]
-            configResponse = self.sendCommand(configCmd)
+            configResponse = self.__sendCommand(configCmd)
             if configResponse not in configurableSettingsList:
                 configCmd = '*0100EW*0100' + configSetting
-                configResponse = self.sendCommand(configCmd)
+                configResponse = self.__sendCommand(configCmd)
                 if configResponse not in configurableSettingsList:
                     raise Exception(f"Configurable property {configSetting} not set correctly on {self.serial_num}")
         
@@ -75,18 +75,18 @@ class Sensor_6000_16B_IS:
         # Set barometer clocks
         utcTimeStr = datetime.utcnow().strftime('%m/%d/%y %H:%M:%S')
         timeSetCmd = '*0100EW*0100GR=' + utcTimeStr
-        self.sendCommand(timeSetCmd)
+        self.__sendCommand(timeSetCmd)
 
         # set the serial port timeout for each barometer to be larger than the sample period
         baroSamplePeriod = 1/self.fs
         self.baroPort.timeout = 1.5 * baroSamplePeriod
 
         # Start P4 sampling
-        self.sendCommand('*0100P4')
+        self.__sendCommand('*0100P4')
 
     def stopSampling(self):
         # send a command to stop P4 continuous sampling - any command will do
-        self.sendCommand('*0100SN')
+        self.__sendCommand('*0100SN')
 
     def getSample(self):
         binIn = self.baroPort.readline()
@@ -101,7 +101,7 @@ class Sensor_6000_16B_IS:
 
         return cur_timestamp, cur_value
 
-    def sendCommand(self, strOut):
+    def __sendCommand(self, strOut):
         strOut = strOut + '\r\n'
         binOut = strOut.encode()
         self.baroPort.write(binOut)
