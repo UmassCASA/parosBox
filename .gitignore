@@ -1,0 +1,9 @@
+# Ignore Secrets
+secrets/*
+!secrets/*.md
+
+# MAC OS
+**DS_store
+
+# Python
+**__pycache__
