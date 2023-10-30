@@ -1,6 +1,5 @@
 # Ignore Secrets
-secrets/*
-!secrets/*.md
+**secrets.json
 
 # MAC OS
 **DS_store

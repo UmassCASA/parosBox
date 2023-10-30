@@ -9,14 +9,12 @@
         "hostname": "mgh4.casa.umass.edu",
         "port": 7000,
         "bind_port": 10002,
-        "token": "$FRP_TOKEN",
         "download_url": "https://github.com/fatedier/frp/releases/download/v0.49.0/frp_0.49.0_linux_arm64.tar.gz"
     },
-    "rmq": {
-        "hostname": "mgh4.casa.umass.edu",
-        "port": 5672,
-        "user": "paros",
-        "password": "$RMQ_PASS"
+    "influxdb": {
+        "url": "https://influxdb.paros.casa.umass.edu/",
+        "bucket": "paros-test-datastream",
+        "org": "paros"
     },
     "sensors": [
         {
