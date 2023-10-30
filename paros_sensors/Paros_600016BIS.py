@@ -2,11 +2,13 @@ import glob
 import serial
 import os
 import persistqueue
-from datetime import datetime
+from datetime import datetime,timezone
+import influxdb_client
 
 class Paros_600016BIS:
-    def __init__(self, serial_num, fs, aa_cutoff, buffer_on, buffer, log_on, logdir):
+    def __init__(self, box_name, serial_num, fs, aa_cutoff, buffer_on, buffer, log_on, logdir):
         self.serial_num = serial_num
+        self.box_name = box_name
         self.sensorPort = None
         self.waitFlag = False  # no response within timeout --> no barometer
         self.stopSamplingTrigger = False
@@ -119,19 +121,19 @@ class Paros_600016BIS:
             in_parts = strIn.split(",")
 
             cur_timestamp = datetime.strptime(in_parts[1].rstrip(), "%m/%d/%y %H:%M:%S.%f")
-            cur_value = in_parts[2].rstrip()
+            #cur_timestamp.tzinfo = timezone.utc
+            cur_value = float(in_parts[2].rstrip())
 
-            sys_timestamp = datetime.utcnow()
+            sys_timestamp = datetime.utcnow().isoformat()
 
             if self.buffer_on:
-                sample_dict = {
-                    "id": self.serial_num,
-                    "value": cur_value,
-                    "timestamp": cur_timestamp,
-                    "sys_time": sys_timestamp
-                }
+                p = influxdb_client.Point(self.box_name)
+                p.tag("id", self.serial_num)
+                p.time(cur_timestamp)
+                p.field("value", cur_value)
+                p.field("sys_time", sys_timestamp)
 
-                self.buffer.put(sample_dict)
+                self.buffer.put(p)
 
             if self.log_on:
                 log_line = f"{self.serial_num},{sys_timestamp},{cur_timestamp},{cur_value}"

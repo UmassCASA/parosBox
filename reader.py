@@ -5,19 +5,50 @@ import concurrent.futures
 import paros_sensors
 import persistqueue
 import time
+import influxdb_client
+
+def merge_dicts(dict1, dict2):
+    if not isinstance(dict1, dict) or not isinstance(dict2, dict):
+        return dict2
+
+    merged = dict1.copy()
+
+    for key, value in dict2.items():
+        if key in merged and isinstance(merged[key], dict) and isinstance(value, dict):
+            merged[key] = merge_dicts(merged[key], value)
+        else:
+            merged[key] = value
+
+    return merged
 
 class parosReader:
-    def __init__(self, config_file):
+    def __init__(self, config_file, secrets_file):
         # Get config from json
+        #! compress these parts?
         if not os.path.isfile(config_file):
             raise Exception(f"File {config_file} does not exist")
+        
+        if not os.path.isfile(secrets_file):
+            raise Exception(f"File {secrets_file} does not exist")
 
         # convert json file to dict
         with open(config_file, 'r') as file:
             self.config = json.load(file)
 
+        with open(secrets_file, 'r') as file:
+            secrets = json.load(file)
+            self.config = merge_dicts(self.config, secrets)
+
         # create buffer queue
         self.buffer = persistqueue.UniqueAckQ('buffer', multithreading=True)
+
+        # create influxdb objects
+        self.influx_client = influxdb_client.InfluxDBClient(
+            url=self.config["influxdb"]["url"],
+            token=self.config["influxdb"]["token"],
+            org=self.config["influxdb"]["org"]
+            )
+        self.influx_write_api = self.influx_client.write_api(write_options=influxdb_client.client.write_api.SYNCHRONOUS)
 
         # create sensors
         self.__createSensors()
@@ -43,6 +74,7 @@ class parosReader:
             # new sensor types must be added here
             if sensor_type == "6000-16B-IS":
                 cur_obj = paros_sensors.Paros_600016BIS(
+                    self.config["box_name"],
                     sensor_dict["id"],
                     sensor_dict["fs"],
                     sensor_dict["aa_cutoff"],
@@ -62,9 +94,16 @@ class parosReader:
             # block until item available in queue
             cur_item = self.buffer.get()
 
-            print(cur_item)
+            try:
+                self.influx_write_api.write(
+                    bucket=self.config["influxdb"]["bucket"],
+                    org=self.config["influxdb"]["org"],
+                    record=cur_item
+                    )
 
-            self.buffer.ack(cur_item)
+                self.buffer.ack(cur_item)
+            except:
+                self.buffer.nack(cur_item)
 
     def launchSamplingThreads(self):
         # Create a thread for each sampler
@@ -91,8 +130,9 @@ def main():
     # Main method
     hostname = socket.gethostname()
     config_file = f"config/{hostname}.json"
+    secrets_file = f"config/{hostname}-secrets.json"
 
-    reader = parosReader(config_file)
+    reader = parosReader(config_file, secrets_file)
     reader.launchSamplingThreads()
     reader.launchProcessingThreads()
 
