@@ -9,6 +9,7 @@ class Paros_600016BIS:
         self.serial_num = serial_num
         self.sensorPort = None
         self.waitFlag = False  # no response within timeout --> no barometer
+        self.stopSamplingTrigger = False
 
         self.fs = fs
         self.aa_cutoff = aa_cutoff
@@ -102,6 +103,9 @@ class Paros_600016BIS:
 
     def samplingLoop(self):
         while True:
+            if self.stopSamplingTrigger:
+                break
+
             # wait for line
             binIn = self.sensorPort.readline()
             strIn = binIn.decode()
@@ -139,6 +143,7 @@ class Paros_600016BIS:
 
     def stopSampling(self):
         # send a command to stop P4 continuous sampling - any command will do
+        self.stopSamplingTrigger = True
         self.__sendCommand('*0100SN')
 
     def closePort(self):

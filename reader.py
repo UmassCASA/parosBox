@@ -31,6 +31,9 @@ class parosReader:
         max_threads = 1
         self.processing_threadpoolexecutor = concurrent.futures.ThreadPoolExecutor(max_workers=max_threads)
 
+        # vars
+        self.shutdown = False
+
     def __createSensors(self):
         # create each sensor object
         self.sensor_list = []
@@ -53,6 +56,9 @@ class parosReader:
 
     def __bufferLoop(self):
         while True:
+            if self.shutdown:
+                break
+
             # block until item available in queue
             cur_item = self.buffer.get()
 
@@ -77,7 +83,9 @@ class parosReader:
         self.processing_futures.append(self.processing_threadpoolexecutor.submit(self.__bufferLoop))
 
     def killProcessingThreads(self):
-        self.processing_threadpoolexecutor.shutdown(wait=False)
+        self.shutdown = True
+
+        self.processing_threadpoolexecutor.shutdown(wait=True)
 
 def main():
     # Main method
@@ -92,9 +100,8 @@ def main():
         while True:
             time.sleep(1)
     except (KeyboardInterrupt, SystemExit, Exception):
-        print("Quitting Reader")
-        reader.killSamplingThreads()
         reader.killProcessingThreads()
+        reader.killSamplingThreads()
 
 if __name__ == "__main__":
     main()
