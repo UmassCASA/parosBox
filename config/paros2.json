@@ -1,0 +1,39 @@
+{
+    "box_name": "paros2",
+    "box_user": "pi",
+    "workingdir": "/home/pi/parosBox",
+    "logdir": "logs",
+    "datadir": "data",
+    "bufferdir": "buffer",
+    "frp": {
+        "hostname": "mgh4.casa.umass.edu",
+        "port": 7000,
+        "bind_port": 10002,
+        "token": "$FRP_TOKEN",
+        "download_url": "https://github.com/fatedier/frp/releases/download/v0.49.0/frp_0.49.0_linux_arm64.tar.gz"
+    },
+    "rmq": {
+        "hostname": "mgh4.casa.umass.edu",
+        "port": 5672,
+        "user": "paros",
+        "password": "$RMQ_PASS"
+    },
+    "sensors": [
+        {
+            "type": "6000-16B-IS",
+            "id": "141908",
+            "fs": 20,
+            "aa_cutoff": 6,
+            "log_locally": false,
+            "upload": true
+        },
+        {
+            "type": "6000-16B-IS",
+            "id": "142166",
+            "fs": 20,
+            "aa_cutoff": 6,
+            "log_locally": false,
+            "upload": true
+        }
+    ]
+}
