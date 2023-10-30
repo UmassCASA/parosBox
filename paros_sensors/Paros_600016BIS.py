@@ -4,6 +4,7 @@ import os
 import persistqueue
 from datetime import datetime,timezone
 import influxdb_client
+from pathlib import Path
 
 class Paros_600016BIS:
     def __init__(self, box_name, serial_num, fs, aa_cutoff, buffer_on, buffer, log_on, logdir):
@@ -12,6 +13,8 @@ class Paros_600016BIS:
         self.sensorPort = None
         self.waitFlag = False  # no response within timeout --> no barometer
         self.stopSamplingTrigger = False
+        self.sampleBuffer = []
+        self.sampleBufferMultiplier = 1  # this value times Fs is the number of samples kept in a local buffer before sending
 
         self.fs = fs
         self.aa_cutoff = aa_cutoff
@@ -133,15 +136,23 @@ class Paros_600016BIS:
                 p.field("value", cur_value)
                 p.field("sys_time", sys_timestamp)
 
-                self.buffer.put(p)
+                self.sampleBuffer.append(p)
+
+                if len(self.sampleBuffer) >= self.fs * self.sampleBufferMultiplier:
+                    self.buffer.put(self.sampleBuffer)
+                    self.sampleBuffer = []
 
             if self.log_on:
                 log_line = f"{self.serial_num},{sys_timestamp},{cur_timestamp},{cur_value}"
 
                 hour_time = cur_timestamp.replace(minute=0, second=0, microsecond=0)
-                log_file = os.path.join(self.log_dir, f"{hour_time.isoformat()}.csv")
+                log_file = os.path.join(self.logdir, f"{hour_time.isoformat()}.csv")
+
+                # create directory if it doesn't exist
+                Path(log_file).parent.mkdir(parents=True, exist_ok=True)
+
                 with open(log_file, 'a') as output_log:
-                    output_log.write(log_line)
+                    output_log.write(log_line + "\n")
 
     def stopSampling(self):
         # send a command to stop P4 continuous sampling - any command will do

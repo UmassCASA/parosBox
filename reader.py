@@ -55,12 +55,12 @@ class parosReader:
 
         # create thread executors
         self.sampling_futures = []
-        max_threads = len(self.sensor_list)
-        self.sampling_threadpoolexecutor = concurrent.futures.ThreadPoolExecutor(max_workers=max_threads)
+        max_sensor_threads = len(self.sensor_list)
+        self.sampling_threadpoolexecutor = concurrent.futures.ThreadPoolExecutor(max_workers=max_sensor_threads)
 
         self.processing_futures = []
-        max_threads = 1
-        self.processing_threadpoolexecutor = concurrent.futures.ThreadPoolExecutor(max_workers=max_threads)
+        self.num_processing_threads = 1
+        self.processing_threadpoolexecutor = concurrent.futures.ThreadPoolExecutor(max_workers=self.num_processing_threads)
 
         # vars
         self.shutdown = False
@@ -81,7 +81,7 @@ class parosReader:
                     sensor_dict["upload"],
                     self.buffer,
                     sensor_dict["log_locally"],
-                    self.config["logdir"]
+                    self.config["datadir"]
                     )
 
                 self.sensor_list.append(cur_obj)
@@ -119,7 +119,8 @@ class parosReader:
 
     def launchProcessingThreads(self):
         # Create a thread for each sampler
-        self.processing_futures.append(self.processing_threadpoolexecutor.submit(self.__bufferLoop))
+        for i in range(self.num_processing_threads):
+            self.processing_futures.append(self.processing_threadpoolexecutor.submit(self.__bufferLoop))
 
     def killProcessingThreads(self):
         self.shutdown = True
