@@ -22,7 +22,7 @@
             "id": "141908",
             "fs": 20,
             "aa_cutoff": 6,
-            "log_locally": false,
+            "log_locally": true,
             "upload": true
         },
         {
@@ -30,7 +30,7 @@
             "id": "142166",
             "fs": 20,
             "aa_cutoff": 6,
-            "log_locally": false,
+            "log_locally": true,
             "upload": true
         }
     ]
