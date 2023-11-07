@@ -86,7 +86,9 @@ class parosReader:
                     record=cur_item
                     )
 
-                sendFailed = False
+                if sendFailed:
+                    self.logEvent(f"Connection to InfluxDB restored")
+                    sendFailed = False
                 self.buffer.ack(cur_item)
 
                 # Clear ACKed parts
