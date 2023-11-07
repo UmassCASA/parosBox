@@ -6,6 +6,11 @@ cd "$(dirname "$0")"
 # enable SPI bus
 sudo raspi-config nonint do_spi 0
 
+# make folders
+mkdir -p buffer
+mkdir -p data
+mkdir -p logs
+
 # Install system packages
 sudo apt install python3-venv python3-dev
 
