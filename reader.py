@@ -6,38 +6,26 @@ import paros_sensors
 import persistqueue
 import time
 import influxdb_client
-
-def merge_dicts(dict1, dict2):
-    if not isinstance(dict1, dict) or not isinstance(dict2, dict):
-        return dict2
-
-    merged = dict1.copy()
-
-    for key, value in dict2.items():
-        if key in merged and isinstance(merged[key], dict) and isinstance(value, dict):
-            merged[key] = merge_dicts(merged[key], value)
-        else:
-            merged[key] = value
-
-    return merged
+from influxdb_client.client.exceptions import InfluxDBError
+from datetime import datetime
+import requests
 
 class parosReader:
     def __init__(self, config_file, secrets_file):
         # Get config from json
-        #! compress these parts?
         if not os.path.isfile(config_file):
             raise Exception(f"File {config_file} does not exist")
-        
-        if not os.path.isfile(secrets_file):
-            raise Exception(f"File {secrets_file} does not exist")
 
         # convert json file to dict
         with open(config_file, 'r') as file:
             self.config = json.load(file)
 
-        with open(secrets_file, 'r') as file:
-            secrets = json.load(file)
-            self.config = merge_dicts(self.config, secrets)
+        # fill in secrets
+        if "influxdb" in self.config and "token" in self.config["influxdb"]:
+            self.config["influxdb"]["token"] = self.__readSecret("INFLUXDB_TOKEN")
+        
+        if "slack_webhook" in self.config:
+            self.config["slack_webhook"] = self.__readSecret("SLACK_WEBHOOK")
 
         # create buffer queue
         self.buffer = persistqueue.UniqueAckQ('buffer', multithreading=True)
@@ -53,17 +41,12 @@ class parosReader:
         # create sensors
         self.__createSensors()
 
-        # create thread executors
-        self.sampling_futures = []
-        max_sensor_threads = len(self.sensor_list)
-        self.sampling_threadpoolexecutor = concurrent.futures.ThreadPoolExecutor(max_workers=max_sensor_threads)
-
-        self.processing_futures = []
-        self.num_processing_threads = 1
-        self.processing_threadpoolexecutor = concurrent.futures.ThreadPoolExecutor(max_workers=self.num_processing_threads)
-
         # vars
         self.shutdown = False
+
+    def __readSecret(self, secret):
+        with open("secrets/INFLUXDB_TOKEN", "r") as file:
+            return file.read()
 
     def __createSensors(self):
         # create each sensor object
@@ -86,7 +69,9 @@ class parosReader:
 
                 self.sensor_list.append(cur_obj)
 
-    def __bufferLoop(self):
+    def bufferLoop(self):
+        sendFailed = False
+
         while True:
             if self.shutdown:
                 break
@@ -101,31 +86,43 @@ class parosReader:
                     record=cur_item
                     )
 
+                sendFailed = False
                 self.buffer.ack(cur_item)
-            except:
+
+                # Clear ACKed parts
+                self.buffer.clear_acked_data()
+            except InfluxDBError as e:
+                if not sendFailed:
+                    self.logEvent(f"Unable to send data to InfluxDB: {e}")
+                    sendFailed = True
+
                 self.buffer.nack(cur_item)
 
-    def launchSamplingThreads(self):
-        # Create a thread for each sampler
-        for i in self.sensor_list:
-            i.startSampling()
-            self.sampling_futures.append(self.sampling_threadpoolexecutor.submit(i.samplingLoop))
+    def cleanBuffer(self):
+        self.buffer.shrink_disk_usage()
 
-    def killSamplingThreads(self):
-        for sensor in self.sensor_list:
-            sensor.stopSampling()
+    def getSensors(self):
+        return self.sensor_list
 
-        self.sampling_threadpoolexecutor.shutdown(wait=True)
+    def logEvent(self, str):
+        output_str = f"[{self.config['box_name']}] {str}"
+        self.__logMessage(output_str)
+        self.__sendSlackMessage(output_str)
 
-    def launchProcessingThreads(self):
-        # Create a thread for each sampler
-        for i in range(self.num_processing_threads):
-            self.processing_futures.append(self.processing_threadpoolexecutor.submit(self.__bufferLoop))
+    def __sendSlackMessage(self, str):
+        if self.config["slack_webhook"] != "":
+            payload = {"text": str}
+            response = requests.post(self.config["slack_webhook"], json.dumps(payload))
 
-    def killProcessingThreads(self):
-        self.shutdown = True
+            if response.status_code != 200:
+                self.__logMessage(f"Slack Webhook Error {response.status_code}")
 
-        self.processing_threadpoolexecutor.shutdown(wait=True)
+    def __logMessage(self, str):
+        if self.config["logfile"] != "":
+            log_file = self.config["logfile"]
+            cur_time = datetime.utcnow().isoformat()
+            with open(log_file, 'a+') as file:
+                file.write(f"[{cur_time}] {str}")
 
 def main():
     # Main method
@@ -133,16 +130,65 @@ def main():
     config_file = f"config/{hostname}.json"
     secrets_file = f"config/{hostname}-secrets.json"
 
+    # Reader object for this box
     reader = parosReader(config_file, secrets_file)
-    reader.launchSamplingThreads()
-    reader.launchProcessingThreads()
+
+    reader.logEvent("Starting ParosBox Program...")
+
+    # Launch Threads
+    sensor_list = reader.getSensors()
+
+    # Launch Sampling Threads
+    sampling_futures = []
+    num_sampling_threads = len(sensor_list)
+    sampling_threadpoolexecutor = concurrent.futures.ThreadPoolExecutor(max_workers=num_sampling_threads)
+
+    for i in reader.getSensors():
+        i.startSampling()
+        sampling_futures.append((i, sampling_threadpoolexecutor.submit(i.samplingLoop)))
+
+    # Launch Processing Thread
+    processing_threadpoolexecutor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    processing_future = processing_threadpoolexecutor.submit(reader.bufferLoop)
+
+    # Create Cleaning Thread
+    cleaning_threadpoolexecutor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    cleaning_future = cleaning_threadpoolexecutor.submit(reader.cleanBuffer)
+
+    clean_interval = 3600  # Every hour
+    cur_interval = 0
 
     try:
         while True:
+            # Check if it's time to clean buffer
+            if not cleaning_future.running() and cur_interval >= clean_interval:
+                cleaning_future = cleaning_threadpoolexecutor.submit(reader.cleanBuffer)
+                cur_interval = 0
+
+            # check if sampling threads are running
+            for future in sampling_futures:
+                if future[1].done() or future[1].cancelled():
+                    # found dead thread
+                    reader.logEvent(f"{future[0].getID()} sampling thread has crashed, restarting...: {future[1].result}")
+                    future[0].startSampling()
+                    future = (future[0], sampling_threadpoolexecutor.submit(future[0].samplingLoop))
+
+            # check if processing thread is running
+            if processing_future.done() or processing_future.cancelled():
+                reader.logEvent(f"Processing thread has crashed, restarting...: {processing_future.result}")
+                processing_future = processing_threadpoolexecutor.submit(reader.bufferLoop)
+
+            cur_interval += 1
+            # Wait 1 second between main loop
             time.sleep(1)
     except (KeyboardInterrupt, SystemExit, Exception):
-        reader.killProcessingThreads()
-        reader.killSamplingThreads()
+        reader.logEvent("Stopping ParosBox Program...")
+
+        for sensor in sensor_list:
+            sensor.stopSampling()
+
+        sampling_threadpoolexecutor.shutdown(wait=False)
+        processing_threadpoolexecutor.shutdown(wait=False)
 
 if __name__ == "__main__":
     main()
