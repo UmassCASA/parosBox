@@ -3,6 +3,9 @@
 # Switch to current dir if not already
 cd "$(dirname "$0")"
 
+# enable SPI bus
+sudo raspi-config nonint do_spi 0
+
 # Install system packages
 sudo apt install python3-venv python3-dev
 
@@ -18,7 +21,6 @@ pip install -r requirements.txt
 # Setup prometheus
 sudo apt install prometheus-node-exporter
 sudo systemctl enable prometheus-node-exporter
-sudo systemctl start prometheus-node-exporter
 
 # Setup FRP
 frp_download="https://github.com/fatedier/frp/releases/download/v0.52.3/frp_0.52.3_linux_arm64.tar.gz"
@@ -52,3 +54,11 @@ echo "localIP = \"127.0.0.1\"" >> frpc/run.toml
 echo "localPort = 9100" >> frpc/run.toml
 remote_port=$((11000 + $frp_offset))
 echo "remotePort = $remote_port" >> frpc/run.toml
+
+# Setup systemd
+sudo cp systemd/* /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable frpc
+sudo systemctl enable parosbox
+
+echo "DONE. Reboot node!"
