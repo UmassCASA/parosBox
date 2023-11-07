@@ -45,7 +45,7 @@ class parosReader:
         self.shutdown = False
 
     def __readSecret(self, secret):
-        with open("secrets/INFLUXDB_TOKEN", "r") as file:
+        with open(f"secrets/{secret}", "r") as file:
             return file.read()
 
     def __createSensors(self):
