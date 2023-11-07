@@ -92,6 +92,9 @@ class Paros_600016BIS:
                 configResponse = self.__sendCommand(configCmd)
                 if configResponse not in configurableSettingsList:
                     raise Exception(f"Configurable property {configSetting} not set correctly on {self.serial_num}")
+                
+    def getID(self):
+        return self.serial_num
         
     def startSampling(self):
         # Set barometer clocks
