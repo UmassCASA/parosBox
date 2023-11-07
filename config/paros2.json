@@ -2,19 +2,21 @@
     "box_name": "paros2",
     "box_user": "pi",
     "workingdir": "/home/pi/parosBox",
-    "logdir": "logs",
+    "logfile": "logs/paros1.log",
     "datadir": "data",
     "bufferdir": "buffer",
+    "slack_webhook": "",
     "frp": {
-        "hostname": "mgh4.casa.umass.edu",
+        "host": "mgh4.casa.umass.edu",
         "port": 7000,
-        "bind_port": 10002,
-        "download_url": "https://github.com/fatedier/frp/releases/download/v0.49.0/frp_0.49.0_linux_arm64.tar.gz"
+        "token": "",
+        "offset": 2
     },
     "influxdb": {
         "url": "https://influxdb.paros.casa.umass.edu/",
         "bucket": "paros-test-datastream",
-        "org": "paros"
+        "org": "paros",
+        "token": ""
     },
     "sensors": [
         {
