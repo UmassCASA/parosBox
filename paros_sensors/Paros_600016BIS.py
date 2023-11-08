@@ -1,23 +1,42 @@
 import glob
 import serial
 import os
-import persistqueue
 from datetime import datetime,timezone
 import influxdb_client
 from pathlib import Path
 
 class Paros_600016BIS:
     def __init__(self, box_name, serial_num, fs, aa_cutoff, buffer_on, buffer, log_on, logdir):
-        self.serial_num = serial_num
-        self.box_name = box_name
-        self.sensorPort = None
+        """
+        Constructor for the Paros_600016BIS sensor
+
+        :param box_name: Name of the box (ie. paros1, paros2)
+        :type box_name: str
+        :param serial_num: Serial # of the barometer (used as the ID)
+        :type serial_num: str
+        :param fs: Sampling rate in Hz
+        :type fs: int
+        :param aa_cutoff: anti-aliasing filter cutoff
+        :type aa_cutoff: int
+        :param buffer_on: True/False turn on output to persistentqueue buffer
+        :type buffer_on: boolean
+        :param buffer: Object of persistentqueue
+        :type buffer: persistqueue.UniqueAckQ
+        :param log_in: True/False turn on output to log file
+        :type log_in: boolean
+        :param logdir: Logging directory to save log files
+        :type logdir: str
+        """
+
+        self.serial_num = serial_num  # serial num of barometer
+        self.box_name = box_name  # name of box
+        self.sensorPort = None  # serial object for sensor port
         self.waitFlag = False  # no response within timeout --> no barometer
-        self.stopSamplingTrigger = False
-        self.sampleBuffer = []
+        self.sampleBuffer = []  # buffer of samples before being added to queue
         self.sampleBufferMultiplier = 1  # this value times Fs is the number of samples kept in a local buffer before sending
 
-        self.fs = fs
-        self.aa_cutoff = aa_cutoff
+        self.fs = fs  # sampling rate in Hz
+        self.aa_cutoff = aa_cutoff  # anti aliasing cutoff
 
         # Validation step
         if self.fs < 2*self.aa_cutoff:
@@ -43,7 +62,10 @@ class Paros_600016BIS:
             sensorPort.timeout = 0.2  # needs to be long enough to wake barometer and get response
             sensorPort.open()
 
-            sensorModelNumber = self.__sendCommand('*0100MN', sensorPort)
+            for i in range(2):
+                # send this command twice just incase sampling mode was still on
+                sensorModelNumber = self.__sendCommand('*0100MN', sensorPort)
+
             if "6000-16B-IS" not in sensorModelNumber:
                 continue
 
@@ -94,9 +116,20 @@ class Paros_600016BIS:
                     raise Exception(f"Configurable property {configSetting} not set correctly on {self.serial_num}")
                 
     def getID(self):
+        """
+        Gets the ID (in this case serial number) of the barometer
+
+        :return: Serial # ID of barometer
+        :rtype: str
+        """
+
         return self.serial_num
         
     def startSampling(self):
+        """
+        Sends start sampling command to barometer, also resets clock
+        """
+
         # Set barometer clocks
         utcTimeStr = datetime.utcnow().strftime('%m/%d/%y %H:%M:%S')
         timeSetCmd = '*0100EW*0100GR=' + utcTimeStr
@@ -106,14 +139,18 @@ class Paros_600016BIS:
         baroSamplePeriod = 1/self.fs
         self.sensorPort.timeout = 1.5 * baroSamplePeriod
 
+        # set sampling bool to true
+        self.sampling = True
+
         # Start P4 sampling
         self.__sendCommand('*0100P4')
 
     def samplingLoop(self):
-        while True:
-            if self.stopSamplingTrigger:
-                break
+        """
+        This is the main sampling loop that launches as a thread
+        """
 
+        while self.sampling:
             # wait for line
             binIn = self.sensorPort.readline()
             strIn = binIn.decode()
@@ -121,8 +158,7 @@ class Paros_600016BIS:
             if "\n" not in strIn:
                 # this line was returned after the timeout was reached
                 # meaning there is something wrong with the connection
-                self.stopSampling()
-                return False
+                continue
 
             in_parts = strIn.split(",")
 
@@ -146,7 +182,7 @@ class Paros_600016BIS:
                     self.sampleBuffer = []
 
             if self.log_on:
-                log_line = f"{self.serial_num},{sys_timestamp},{cur_timestamp},{cur_value}"
+                log_line = f"{self.box_name},{self.serial_num},{sys_timestamp},{cur_timestamp.isoformat()},{cur_value}"
 
                 hour_time = cur_timestamp.replace(minute=0, second=0, microsecond=0)
                 log_file = os.path.join(self.logdir, f"{hour_time.isoformat()}.csv")
@@ -158,15 +194,31 @@ class Paros_600016BIS:
                     output_log.write(log_line + "\n")
 
     def stopSampling(self):
+        """
+        Stops sampling - useful if the program is quitting
+        """
+
+        self.sampling = False
         # send a command to stop P4 continuous sampling - any command will do
-        self.stopSamplingTrigger = True
         self.__sendCommand('*0100SN')
 
     def closePort(self):
+        """
+        Closes serial connection to the barometer
+        """
+
         # Close serial connection
         self.sensorPort.close()
 
     def __sendCommand(self, strOut, port = None):
+        """
+        Sends command to barometer, gets output
+
+        :param strOut: Command to send
+        :type strOut: str
+        :param port: Optionally pass serial port directly instead of using instance var
+        :type port: serial.Serial
+        """
         strOut = strOut + '\r\n'
         binOut = strOut.encode()
 
