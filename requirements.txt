@@ -1,0 +1,6 @@
+pyserial
+persistqueue
+influxdb-client
+requests
+RPi.GPIO
+spidev

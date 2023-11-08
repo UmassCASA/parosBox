@@ -1,0 +1,21 @@
+# MAC OS
+**DS_store
+
+# Python
+**__pycache__
+
+# Ignore states
+data
+logs
+buffer
+
+# venv
+venv
+
+# Secrets
+secrets/*
+!secrets/README.md
+
+# FRPC
+frpc/*
+!frpc/README.md
