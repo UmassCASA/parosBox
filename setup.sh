@@ -64,6 +64,7 @@ echo "remotePort = $remote_port" >> frpc/run.toml
 sudo cp systemd/* /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable frpc
-sudo systemctl enable parosbox
+sudo systemctl enable paros-processor
+sudo systemctl enable paros-sampler
 
 echo "DONE. Reboot node!"

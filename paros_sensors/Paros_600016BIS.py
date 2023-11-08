@@ -163,7 +163,6 @@ class Paros_600016BIS:
             in_parts = strIn.split(",")
 
             cur_timestamp = datetime.strptime(in_parts[1].rstrip(), "%m/%d/%y %H:%M:%S.%f")
-            #cur_timestamp.tzinfo = timezone.utc
             cur_value = float(in_parts[2].rstrip())
 
             sys_timestamp = datetime.utcnow().isoformat()

@@ -1,11 +1,11 @@
 [Unit]
-Description=ParosBox Datalogger
+Description=ParosBox Processor
 After=network-online.target,time-sync.target
 Wants=network-online.target,time-sync.target
 
 [Service]
 WorkingDirectory=/home/pi/parosBox
-ExecStart=/home/pi/parosBox/venv/bin/python /home/pi/parosBox/reader.py
+ExecStart=/home/pi/parosBox/venv/bin/python /home/pi/parosBox/processor.py
 Restart=always
 RestartSec=10
 User=pi
