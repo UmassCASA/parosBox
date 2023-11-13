@@ -60,7 +60,7 @@ class parosProcessor:
 
                 # Clear ACKed parts
                 self.buffer.clear_acked_data()
-            except InfluxDBError as e:
+            except Exception as e:
                 if not sendFailed:
                     self.notifier.logEvent(f"Unable to send data to InfluxDB: {e}")
                     sendFailed = True

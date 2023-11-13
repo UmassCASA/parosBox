@@ -25,10 +25,15 @@ class parosNotifier:
     def __sendSlackMessage(self, str):
         if self.config["slack_webhook"] != "":
             payload = {"text": str}
-            response = requests.post(self.config["slack_webhook"], json.dumps(payload))
 
-            if response.status_code != 200:
-                self.__logMessage(f"Slack Webhook Error {response.status_code}")
+            try:
+                response = requests.post(self.config["slack_webhook"], json.dumps(payload))
+
+                if response.status_code != 200:
+                    self.__logMessage(f"Slack Webhook Error {response.status_code}")
+            except Exception as e:
+                self.__logMessage(f"Slack Webhook Error {e}")
+                return
 
     def __logMessage(self, str):
         if self.config["logfile"] != "":
