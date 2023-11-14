@@ -12,10 +12,6 @@ buffer
 # venv
 venv
 
-# Secrets
-secrets/*
-!secrets/README.md
-
 # FRPC
 frpc/*
 !frpc/README.md
