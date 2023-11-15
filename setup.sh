@@ -39,7 +39,7 @@ rm -rf /tmp/frp*
 conf_file="config/$(hostname).json"
 frp_hostname=$(jq -r '.frp.host' $conf_file)
 frp_port=$(jq -r '.frp.port' $conf_file)
-frp_token=$(cat "secrets/FRP_TOKEN")
+frp_token=$(jq -r '.frp.token' $conf_file)
 frp_offset=$(jq -r '.frp.offset' $conf_file)
 
 echo "serverAddr = \"$frp_hostname\"" > frpc/run.toml

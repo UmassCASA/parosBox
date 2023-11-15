@@ -12,6 +12,9 @@ buffer
 # venv
 venv
 
+# ignore config repo
+config
+
 # FRPC
 frpc/*
 !frpc/README.md
