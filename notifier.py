@@ -13,10 +13,6 @@ class parosNotifier:
         with open(config_file, 'r') as file:
             self.config = json.load(file)
 
-        # fill in slack_webhook secret
-        with open(f"secrets/SLACK_WEBHOOK", "r") as file:
-            self.config["slack_webhook"] = file.read()
-
     def logEvent(self, str):
         output_str = f"[{self.config['box_name']}] {str}"
         self.__logMessage(output_str)
@@ -25,10 +21,15 @@ class parosNotifier:
     def __sendSlackMessage(self, str):
         if self.config["slack_webhook"] != "":
             payload = {"text": str}
-            response = requests.post(self.config["slack_webhook"], json.dumps(payload))
 
-            if response.status_code != 200:
-                self.__logMessage(f"Slack Webhook Error {response.status_code}")
+            try:
+                response = requests.post(self.config["slack_webhook"], json.dumps(payload))
+
+                if response.status_code != 200:
+                    self.__logMessage(f"Slack Webhook Error {response.status_code}")
+            except Exception as e:
+                self.__logMessage(f"Slack Webhook Error {e}")
+                return
 
     def __logMessage(self, str):
         if self.config["logfile"] != "":

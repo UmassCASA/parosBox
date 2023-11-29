@@ -12,9 +12,8 @@ buffer
 # venv
 venv
 
-# Secrets
-secrets/*
-!secrets/README.md
+# ignore config repo
+config
 
 # FRPC
 frpc/*

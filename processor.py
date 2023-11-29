@@ -21,10 +21,6 @@ class parosProcessor:
         with open(config_file, 'r') as file:
             self.config = json.load(file)
 
-        # fill in secrets
-        with open(f"secrets/INFLUXDB_TOKEN", "r") as file:
-            self.config["influxdb"]["token"] = file.read()
-
         # create buffer queue
         self.buffer = persistqueue.UniqueAckQ('buffer', multithreading=True)
 
@@ -60,7 +56,7 @@ class parosProcessor:
 
                 # Clear ACKed parts
                 self.buffer.clear_acked_data()
-            except InfluxDBError as e:
+            except Exception as e:
                 if not sendFailed:
                     self.notifier.logEvent(f"Unable to send data to InfluxDB: {e}")
                     sendFailed = True
