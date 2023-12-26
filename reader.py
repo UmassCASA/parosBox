@@ -65,9 +65,17 @@ class parosReader:
                     sensor_dict["log_locally"],
                     self.config["datadir"]
                 )
+            elif sensor_type == "young_86000":
+                cur_obj = paros_sensors.Young_86000(
+                    self.config["box_name"],
+                    sensor_dict["id"],
+                    sensor_dict["upload"],
+                    self.buffer,
+                    sensor_dict["log_locally"],
+                    self.config["datadir"]
+                )
 
-                # Ignore anemometer for now, it's broken
-                #self.sensor_list.append(cur_obj)
+                self.sensor_list.append(cur_obj)
 
     def getSensors(self):
         return self.sensor_list
