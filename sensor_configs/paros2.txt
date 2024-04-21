@@ -1,0 +1,2 @@
+Paros_600016BIS.py 142166 /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A10LKG7Q-if00-port0
+Paros_600016BIS.py 141908 /dev/serial/by-id/usb-Prolific_Technology_Inc._USB-Serial_Controller-if00-port0

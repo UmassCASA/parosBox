@@ -4,17 +4,8 @@
 # Python
 **__pycache__
 
-# Ignore states
-data
-logs
-buffer
-
-# venv
-venv
-
 # ignore config repo
 config
 
-# FRPC
-frpc/*
-!frpc/README.md
+#.env file
+.env

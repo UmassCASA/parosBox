@@ -4,3 +4,4 @@ influxdb-client
 requests
 RPi.GPIO
 spidev
+python-dotenv

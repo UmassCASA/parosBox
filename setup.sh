@@ -1,70 +1,121 @@
 #!/bin/bash
 
-# Switch to current dir if not already
-cd "$(dirname "$0")"
+#
+# VARS
+#
+FRP_DOWNLOAD="https://github.com/fatedier/frp/releases/download/v0.52.3/frp_0.52.3_linux_arm64.tar.gz"
+DEV_HOSTNAME=$(hostname)
 
-# enable SPI bus
+# Switch to current dir if not already
+THIS_LOCATION=$(dirname "$0")
+cd $THIS_LOCATION
+source .env
+
+#
+# Create DIRS
+#
+mkdir -p $PAROS_BUFFER_LOCATION
+mkdir -p $PAROS_BACKUP_LOCATION
+mkdir -p $PAROS_FRP_LOCATION
+
+#
+# Raspberry PI Setup
+#
 sudo raspi-config nonint do_spi 0
 
-# make folders
-mkdir -p buffer
-mkdir -p data
-mkdir -p logs
-
-# Install system packages
+#
+# Install APT Packages
+#
 sudo apt install python3-venv python3-dev
 
-# Create python venv here
-python3 -m venv venv
-
-# Activate venv
-source ./venv/bin/activate
-
-# Install python packages
+#
+# Python Setup
+#
+python3 -m venv $PAROS_VENV_LOCATION
+source $PAROS_VENV_LOCATION/bin/activate
 pip install -r requirements.txt
 
-# Setup prometheus
+#
+# Prometheus
+#
 sudo apt install prometheus-node-exporter
 sudo systemctl enable prometheus-node-exporter
 
-# Setup FRP
-frp_download="https://github.com/fatedier/frp/releases/download/v0.52.3/frp_0.52.3_linux_arm64.tar.gz"
-wget -nv $frp_download -O /tmp/frp.tar.gz
+#
+# FRPC
+#
+wget -nv $FRP_DOWNLOAD -O /tmp/frp.tar.gz
 tar -xf /tmp/frp.tar.gz -C /tmp
 mkdir -p ./frpc/
-cp /tmp/frp*/frpc ./frpc/
-chmod +x ./frpc
+cp /tmp/frp*/frpc $PAROS_FRP_LOCATION/
+chmod +x $PAROS_FRP_LOCATION/*
 rm -rf /tmp/frp*
 
-conf_file="config/$(hostname).json"
-frp_hostname=$(jq -r '.frp.host' $conf_file)
-frp_port=$(jq -r '.frp.port' $conf_file)
-frp_token=$(jq -r '.frp.token' $conf_file)
-frp_offset=$(jq -r '.frp.offset' $conf_file)
+cat > $PAROS_FRP_LOCATION/run.toml << EOF
+serverAddr = "$PAROS_FRP_HOST"
+serverPort = $PAROS_FRP_PORT
+auth.token = "$PAROS_FRP_TOKEN"
+[[proxies]]
+name = "${DEV_HOSTNAME}_ssh"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 22
+remotePort = $((10000 + $PAROS_FRP_OFFSET))
+[[proxies]]
+name = "${DEV_HOSTNAME}_prometheus"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 9100
+remotePort = $((11000 + $PAROS_FRP_OFFSET))
+EOF
 
-echo "serverAddr = \"$frp_hostname\"" > frpc/run.toml
-echo "serverPort = $frp_port" >> frpc/run.toml
-echo "auth.token = \"$frp_token\"" >> frpc/run.toml
-echo "[[proxies]]" >> frpc/run.toml
-echo "name = \"paros2_ssh\"" >> frpc/run.toml
-echo "type = \"tcp\"" >> frpc/run.toml
-echo "localIP = \"127.0.0.1\"" >> frpc/run.toml
-echo "localPort = 22" >> frpc/run.toml
-remote_port=$((10000 + $frp_offset))
-echo "remotePort = $remote_port" >> frpc/run.toml
-echo "[[proxies]]" >> frpc/run.toml
-echo "name = \"paros2_prometheus\"" >> frpc/run.toml
-echo "type = \"tcp\"" >> frpc/run.toml
-echo "localIP = \"127.0.0.1\"" >> frpc/run.toml
-echo "localPort = 9100" >> frpc/run.toml
-remote_port=$((11000 + $frp_offset))
-echo "remotePort = $remote_port" >> frpc/run.toml
+sudo cat > /etc/systemd/system/frpc.service << EOF
+[Unit]
+Description=FRPC Daemon
+After=network-online.target
+Wants=network-online.target
 
-# Setup systemd
-sudo cp systemd/* /etc/systemd/system/
+[Service]
+WorkingDirectory=$PAROS_FRP_LOCATION
+ExecStart=$PAROS_FRP_LOCATION/frpc --config=$PAROS_FRP_LOCATION/run.toml
+Restart=always
+RestartSec=10
+User=pi
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
 sudo systemctl daemon-reload
 sudo systemctl enable frpc
-sudo systemctl enable paros-processor
-sudo systemctl enable paros-sampler
+
+#
+# Sensor Daemons
+#
+while read line; do
+    if [ -n "$line" ]; then
+        cur_sensor_id=$(echo "$line" | cut -d' ' -f2)
+
+        sudo cat > /etc/systemd/system/paros-$cur_sensor_id.service << EOF
+[Unit]
+Description=Paros Sampler $cur_sensor_id
+After=network-online.target,time-sync.target
+Wants=network-online.target,time-sync.target
+
+[Service]
+WorkingDirectory=/home/pi/parosBox
+ExecStart=$PAROS_VENV_LOCATION/bin/python $THIS_LOCATION/paros_sensors/$line
+Restart=always
+RestartSec=10
+User=pi
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+        sudo systemctl daemon-reload
+        sudo systemctl enable paros-$cur_sensor_id.service
+    fi
+done < sensor_configs/$DEV_HOSTNAME.txt
 
 echo "DONE. Reboot node!"
