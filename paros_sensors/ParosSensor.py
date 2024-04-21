@@ -1,4 +1,3 @@
-import persistqueue
 import datetime
 import os
 
@@ -6,14 +5,13 @@ class ParosSensor:
 
     sampleBufferSize = 20  # this value * Fs is the number of samples kept in a local buffer before sending
 
-    def __init__(self, box_id, sensor_id, buffer_loc, backup_loc):
+    def __init__(self, box_id, sensor_id, data_loc):
         self.box_id = box_id
         self.sensor_id = sensor_id
-        self.backup_loc = backup_loc
+        self.data_loc = data_loc
 
-        # Initialize Buffer
-        self.buffer = persistqueue.Queue(buffer_loc)
-        self.sampleBuffer = []  # buffer of samples before being added to queue
+        # create data dir if needed
+        os.makedirs(os.path.join(self.data_loc, self.sensor_id), exist_ok=True)
 
     def addSample(self, p):
         # get NTP timestamp
@@ -23,19 +21,8 @@ class ParosSensor:
         p.time(sys_timestamp)
         p.tag("id", self.sensor_id)
 
-        # add to internal buffer
-        self.sampleBuffer.append(p)
-
-        # add to backup file
-        hour_timestamp = sys_timestamp.replace(minute=0, second=0, microsecond=0)
-        cur_backup_file = os.path.join(self.backup_loc, f"{hour_timestamp.isoformat()}.txt")
+        # add point to data file
+        cur_data_file = os.path.join(self.data_loc, self.sensor_id, sys_timestamp.strftime('%Y-%m-%d-%H'))
         serialized_point = p.to_line_protocol()
-        with open(cur_backup_file, "a+") as f_backup:
-            # Create newline if needed
-            f_backup.write(f"{serialized_point}\n")
-
-        # send to external buffer
-        if len(self.sampleBuffer) >= self.sampleBufferSize:
-            self.buffer.put(self.sampleBuffer)
-            self.buffer.task_done()
-            self.sampleBuffer = []
+        with open(cur_data_file, "a+") as f:
+            f.write(f"{serialized_point}\n")

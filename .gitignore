@@ -9,3 +9,6 @@ config
 
 #.env file
 .env
+
+# pointer file
+pointer.pickle

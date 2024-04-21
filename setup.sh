@@ -1,10 +1,15 @@
 #!/bin/bash
 
+if [ "$EUID" == 0 ]; then
+    echo "Do not run this script as root!"
+    exit 1
+fi
+
 #
 # VARS
 #
 FRP_DOWNLOAD="https://github.com/fatedier/frp/releases/download/v0.52.3/frp_0.52.3_linux_arm64.tar.gz"
-DEV_HOSTNAME=$(hostname)
+THIS_HOSTNAME=$(hostname)
 
 # Switch to current dir if not already
 THIS_LOCATION=$(dirname "$0")
@@ -14,14 +19,8 @@ source .env
 #
 # Create DIRS
 #
-mkdir -p $PAROS_BUFFER_LOCATION
-mkdir -p $PAROS_BACKUP_LOCATION
+mkdir -p $PAROS_DATA_LOCATION
 mkdir -p $PAROS_FRP_LOCATION
-
-#
-# Raspberry PI Setup
-#
-sudo raspi-config nonint do_spi 0
 
 #
 # Install APT Packages
@@ -46,9 +45,8 @@ sudo systemctl enable prometheus-node-exporter
 #
 wget -nv $FRP_DOWNLOAD -O /tmp/frp.tar.gz
 tar -xf /tmp/frp.tar.gz -C /tmp
-mkdir -p ./frpc/
-cp /tmp/frp*/frpc $PAROS_FRP_LOCATION/
-chmod +x $PAROS_FRP_LOCATION/*
+cp /tmp/frp*/frpc /usr/local/bin/
+chmod +x /usr/local/bin/frpc
 rm -rf /tmp/frp*
 
 cat > $PAROS_FRP_LOCATION/run.toml << EOF
@@ -56,13 +54,13 @@ serverAddr = "$PAROS_FRP_HOST"
 serverPort = $PAROS_FRP_PORT
 auth.token = "$PAROS_FRP_TOKEN"
 [[proxies]]
-name = "${DEV_HOSTNAME}_ssh"
+name = "${THIS_HOSTNAME}_ssh"
 type = "tcp"
 localIP = "127.0.0.1"
 localPort = 22
 remotePort = $((10000 + $PAROS_FRP_OFFSET))
 [[proxies]]
-name = "${DEV_HOSTNAME}_prometheus"
+name = "${THIS_HOSTNAME}_prometheus"
 type = "tcp"
 localIP = "127.0.0.1"
 localPort = 9100
@@ -76,8 +74,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-WorkingDirectory=$PAROS_FRP_LOCATION
-ExecStart=$PAROS_FRP_LOCATION/frpc --config=$PAROS_FRP_LOCATION/run.toml
+ExecStart=frpc --config=$PAROS_FRP_LOCATION/run.toml
 Restart=always
 RestartSec=10
 User=pi
@@ -88,6 +85,15 @@ EOF
 
 sudo systemctl daemon-reload
 sudo systemctl enable frpc.service
+
+#
+# Influx
+#
+wget -nv https://download.influxdata.com/influxdb/releases/influxdb2-client-2.7.5-linux-arm64.tar.gz /tmp/influx.tar.gz
+tar -xf /tmp/influx.tar.gz -C /tmp
+sudo cp /tmp/influx /usr/local/bin/
+chmod +x /usr/local/bin/influx
+rm -rf /tmp/influx*
 
 #
 # Sensor Daemons

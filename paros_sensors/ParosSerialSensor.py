@@ -5,8 +5,8 @@ class ParosSerialSensor(ParosSensor):
 
     verbose = False
 
-    def __init__(self, box_id, sensor_id, buffer_loc, backup_loc, device_file, ser_baud, ser_bytesize, ser_parity, ser_stopbits, ser_timeout):
-        super().__init__(box_id, sensor_id, buffer_loc, backup_loc)
+    def __init__(self, box_id, sensor_id, data_loc, device_file, ser_baud, ser_bytesize, ser_parity, ser_stopbits, ser_timeout):
+        super().__init__(box_id, sensor_id, data_loc)
 
         # Instance Vars
         self.sensor_id = sensor_id  # serial num of barometer

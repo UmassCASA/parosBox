@@ -11,12 +11,11 @@ import pathlib
 
 class Paros_600016BIS(ParosSerialSensor):
 
-    def __init__(self, box_id, sensor_id, buffer_loc, backup_loc, device_file):
+    def __init__(self, box_id, sensor_id, data_loc, device_file):
         super().__init__(
             box_id,
             sensor_id,
-            buffer_loc,
-            backup_loc,
+            data_loc,
             device_file,
             ser_baud = 115200,
             ser_bytesize = serial.EIGHTBITS,
@@ -118,20 +117,24 @@ if __name__ == "__main__":
     file_path = pathlib.Path(__file__).parent.resolve()
     load_dotenv(f"{file_path}/../.env")
 
-    buffer_loc = os.getenv('PAROS_BUFFER_LOCATION')
-    if buffer_loc is None:
-        print(".env file is missing or BUFFER_LOC not defined")
-        exit(1)
+    required_envs = [
+        "PAROS_DATA_LOCATION"
+    ]
 
-    backup_loc = os.getenv('PAROS_BACKUP_LOCATION')
-    if backup_loc is None:
-        print(".env file is missing or BACKUP_LOC not defined")
-        exit(1)
+    for env_item in required_envs:
+        if os.getenv(env_item) is None:
+            print(f"Unable to find environment variable {env_item}. Does .env exist?")
+            exit(1)
 
     parser = argparse.ArgumentParser()
     parser.add_argument("sensor_id", help="Sensor ID Number", type=str)
     parser.add_argument("device", help="Device file for serial connection", type=str)
     args = parser.parse_args()
 
-    cur_sensor = Paros_600016BIS(socket.gethostname(), args.sensor_id, buffer_loc, backup_loc, args.device)
+    cur_sensor = Paros_600016BIS(
+        socket.gethostname(),
+        args.sensor_id,
+        os.getenv("PAROS_DATA_LOCATION"),
+        args.device
+    )
     cur_sensor.samplingLoop()

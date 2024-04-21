@@ -1,21 +1,21 @@
-import glob
 import serial
 import os
-from datetime import datetime,timezone
 import influxdb_client
-from pathlib import Path
 import math
 from ParosSerialSensor import ParosSerialSensor
 from ParosSensor import ParosSensor
+import pathlib
+from dotenv import load_dotenv
+import argparse
+import socket
 
-class Young_86000:
+class Young_86000(ParosSerialSensor):
 
-    def __init__(self, box_id, sensor_id, buffer_loc, backup_loc, device_file):
+    def __init__(self, box_id, sensor_id, data_loc, device_file):
         super().__init__(
             box_id,
             sensor_id,
-            buffer_loc,
-            backup_loc,
+            data_loc,
             device_file,
             ser_baud = 9600,
             ser_bytesize = serial.EIGHTBITS,
@@ -104,3 +104,30 @@ class Young_86000:
             except KeyboardInterrupt:
                 print("Stopping sampling")
                 exit(0)
+
+if __name__ == "__main__":
+    # load .env file
+    file_path = pathlib.Path(__file__).parent.resolve()
+    load_dotenv(f"{file_path}/../.env")
+
+    required_envs = [
+        "PAROS_DATA_LOCATION"
+    ]
+
+    for env_item in required_envs:
+        if os.getenv(env_item) is None:
+            print(f"Unable to find environment variable {env_item}. Does .env exist?")
+            exit(1)
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("sensor_id", help="Sensor ID Number", type=str)
+    parser.add_argument("device", help="Device file for serial connection", type=str)
+    args = parser.parse_args()
+
+    cur_sensor = Young_86000(
+        socket.gethostname(),
+        args.sensor_id,
+        os.getenv("PAROS_DATA_LOCATION"),
+        args.device
+    )
+    cur_sensor.samplingLoop()
