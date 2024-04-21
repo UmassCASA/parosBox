@@ -11,15 +11,21 @@ from time import sleep
 
 class parosProcessor:
 
-    pointer_path = 'pointer.pickle'
-    maximum_upload = 600
-    sending_frequency = 1  # number of seconds to send data
+    POINTER_PATH = 'pointer.pickle'
+    MAXIMUM_UPLOAD_SIZE = 600  # Maximum # of lines/datapoints for each upload
+    LOOP_PERIOD = 1  # Loop timing control period
 
     def __init__(self, data_loc, influx_host, influx_org, influx_bucket, influx_token):
+        #
+        # Instance Vars
+        #
+
+        # Parameters
         self.data_loc = data_loc
         self.influx_bucket = influx_bucket
+        self.influx_fail = False
 
-        # create influxdb objects
+        # InfluxDB Objects
         self.influx_client = influxdb_client.InfluxDBClient(
             url=influx_host,
             token=influx_token,
@@ -27,81 +33,93 @@ class parosProcessor:
         )
         self.influx_write_api = self.influx_client.write_api(write_options=influxdb_client.client.write_api.SYNCHRONOUS, debug=True)
 
-        # get list of sensors
+        # List of Sensors
         self.sensors = []
         with open(f'sensor_configs/{socket.gethostname()}.json', 'r') as f:
+            # load this box's sensor json file and parse the sensor_id
             sensors_json = json.load(f)['sensors']
             for sensor in sensors_json:
                 self.sensors.append(sensor['sensor_id'])
+                logging.debug(f"Found sensor {sensor}")
 
-        # create pointer file if needed (initial or reset)
-        if not os.path.isfile(self.pointer_path) or os.path.getsize(self.pointer_path) == 0:
+        #
+        # Pointer File Creation
+        #
+        if not os.path.isfile(self.POINTER_PATH) or os.path.getsize(self.POINTER_PATH) == 0:
+            # Sets a new pointer only if the file doesn't exist or the file has a size of 0 (no data)
+            # The initial state is the current time of the system.
             cur_time = datetime.datetime.now(datetime.UTC)
             file_hour = cur_time.strftime('%Y-%m-%d-%H')
 
             for sensor in self.sensors:
-                self.setPointer(sensor, file_hour, 1)
+                # Sets the initial pointer. Offset starts at 0
+                self.setPointer(sensor, file_hour, 0)
 
     def getPointer(self, sensor_id = None):
-        if os.path.isfile(self.pointer_path) and os.path.getsize(self.pointer_path) > 0:
-            with open(self.pointer_path, 'rb') as f:
+        if os.path.isfile(self.POINTER_PATH) and os.path.getsize(self.POINTER_PATH) > 0:
+            # Only try to open the file if it exists and its size is greather than 0
+            with open(self.POINTER_PATH, 'rb') as f:
+                # pickle files are opened in binary mode
                 cur_pointer = pickle.load(f)
+                # If a sensor_id is requested, send only that. Otherwise, send the whole dict
                 if sensor_id is None:
                     return cur_pointer
                 else:
                     return cur_pointer[sensor_id]
         else:
+            # return an empty dict if the file doesn't exist
             return {}
 
     def setPointer(self, sensor_id, hour, offset):
+        # get the current pointer to update its value
         cur_pointer = self.getPointer()
         cur_pointer[sensor_id] = [hour, offset]
-        with open(self.pointer_path, 'wb') as f:
+        with open(self.POINTER_PATH, 'wb') as f:
+            # overwrite existing pickle file in binary mode
             pickle.dump(cur_pointer, f)
+            logging.debug(f"Updated pointer file for sensor {sensor_id} with values hour={hour} and offset={offset}")
 
     def __getLatestData(self, cur_path, cur_offset):
         with open(cur_path, 'r') as f:
+            # Open indicated data file and seek to pointer offset
+            # Storing the offset is much faster than reading the
+            # whole file every time
             f.seek(cur_offset)
 
-            output_str = ""
-            line_counter = 0
-            while True:
-                if line_counter > self.maximum_upload:
-                    break
+            output_str = ""  # stored line protocols that are new
+            line_counter = 0  # stores the number of lines added
 
+            # Do not allow a single block of more than the number of lines
+            # specified in self.MAXIMUM_UPLOAD_SIZE
+            while line_counter <= self.MAXIMUM_UPLOAD_SIZE:
                 lp_str = f.readline()
                 if not lp_str:
-                    # no more lines
+                    # Arrived at the end of the file
                     break
 
-                output_str += lp_str
-                line_counter += 1
-                cur_offset += len(lp_str)
+                output_str += lp_str  # append line to output
+                line_counter += 1  # incremement line counter
+                cur_offset += len(lp_str)  # update offset by the length of the line
 
         return output_str,cur_offset,line_counter
 
     def __processSensor(self, sensor):
-        cur_sensor_dir = os.path.join(self.data_loc, sensor)
-        cur_file,cur_offset = self.getPointer(sensor)
-        cur_path = os.path.join(cur_sensor_dir, cur_file)
+        cur_sensor_dir = os.path.join(self.data_loc, sensor)  # Find the sensor data path in the filesystem
+        cur_file,cur_offset = self.getPointer(sensor)  # Get the state of the current pointer for this sensor
+        cur_path = os.path.join(cur_sensor_dir, cur_file)  # Get full path of the current data file
 
         # this stored the output line-protocol for the given sensors during this loop
         output_lp = ""
+        cur_pointer_time = datetime.datetime.strptime(cur_file, '%Y-%m-%d-%H')  # Create a datetime object from the stored hour
 
-        #print("-----------")
-        #print(sensor)
-        #print(cur_file)
-        #print(cur_offset)
-        #print("-----------")
-
-        cur_pointer_time = datetime.datetime.strptime(cur_file, '%Y-%m-%d-%H')
-
-        num_lines = 0
+        num_lines = 0  # initialize num_lines var for later
 
         if os.path.isfile(cur_path):
+            # This is where the data is actually pulled from the file, only if the file exists
             output_lp,cur_offset,num_lines = self.__getLatestData(cur_path, cur_offset)
 
         if output_lp:
+            # There is new line protocol to send to InfluxDB
             try:
                 # Send 'em off!
                 self.influx_write_api.write(
@@ -109,52 +127,84 @@ class parosProcessor:
                     record = output_lp
                 )
 
-                print(f"Sending {num_lines} of line-protocol")
+                if self.influx_fail:
+                    logging.info("Conenction to InfluxDB restored")
+                    self.influx_fail = False
 
+                logging.debug(f"Uploaded {num_lines} of line-protocol for sensor {sensor}")
+
+                # Update the pointer ONLY after successfully sending to InfluxDB
                 self.setPointer(sensor, cur_file, cur_offset)
             except:
+                if not self.influx_fail:
+                    logging.error("Connection to InfluxDB Lost")
+                    self.influx_fail = True
+
                 pass
         else:
-            # no new output
+            # Nothing new to send
+            # This will execute if the program is running too fast (not an issue)
+            # or if the file is no longer being written to. In this case usually
+            # it is time to switch to the next hour of data. This also allows the processor
+            # to "find" the next available file if the program is running behind without
+            # having to list the whole directory of files and sort them, which takes
+            # a long time
             if self.__getHourOnlyUTCNow() > cur_pointer_time:
-                # we're in the future now
+                # Verify that the sensors aren't time traveling before
+                # switching to the new file
                 cur_pointer_time += datetime.timedelta(hours=1)
                 cur_file = cur_pointer_time.strftime('%Y-%m-%d-%H')
                 cur_offset = 0
 
-            self.setPointer(sensor, cur_file, cur_offset)
+                self.setPointer(sensor, cur_file, cur_offset)
 
+        # Returns the number of lines uploaded to influxdb
         return num_lines
 
     def __getHourOnlyUTCNow(self):
+        # Gets the current datetime in UTC then removes timezone info, and removes
+        # anything more granular than an hour for comparison purposes
         return datetime.datetime.now(datetime.UTC).replace(tzinfo=None, minute=0, second=0, microsecond=0)
 
     def processorLoop(self):
+        # Main loop
         while True:
             try:
+                # Record system time when starting an iteration
                 loop_start_time = datetime.datetime.now()
-                max_num_lines = 0
+                max_num_lines = 0  # stores the maximum numnber of lines sent during this iteration
 
                 # loop through each sensor and poll files
                 for sensor in self.sensors:
                     cur_num_lines = self.__processSensor(sensor)
+
+                    # if this is a maximum, update
                     if cur_num_lines > max_num_lines:
                         max_num_lines = cur_num_lines
 
-                if max_num_lines < self.maximum_upload:
-                    while datetime.datetime.now() < loop_start_time + datetime.timedelta(seconds=1):
-                        sleep(0.1)
+                # Timing control portion of the loop. Usually, there is no reason for the program to
+                # be looping as fast as possible, so we wait until the current system time is at least
+                # 1 second past the time when the iteration started. The exception is that if the program
+                # needs to catch up, which is evident by the lines being sent being equal to maximum upload,
+                # then we want the program to keep looping without control until it is stable again
+                if max_num_lines < self.MAXIMUM_UPLOAD_SIZE:
+                    while datetime.datetime.now() < loop_start_time + datetime.timedelta(seconds=self.LOOP_PERIOD):
+                        sleep(0.01)
+
             except KeyboardInterrupt:
-                print("Stopping processor")
+                # Handles ctrl+c events
+                logging.info("Stopping processor from key interrupt")
                 exit(0)
 
 def main():
-    logging.basicConfig(level=logging.DEBUG)
+    # Setup logging
+    logging.basicConfig(level=logging.INFO)
 
     # Read .env file
     file_path = pathlib.Path(__file__).parent.resolve()
     load_dotenv(f"{file_path}/.env")
 
+    # Defined required env variables
     required_envs = [
         "PAROS_DATA_LOCATION",
         "PAROS_INFLUXDB_HOST",
@@ -165,7 +215,7 @@ def main():
 
     for env_item in required_envs:
         if os.getenv(env_item) is None:
-            print(f"Unable to find environment variable {env_item}. Does .env exist?")
+            logging.critical(f"Unable to find environment variable {env_item}. Does .env exist?")
             exit(1)
 
     # Create processor
@@ -178,6 +228,7 @@ def main():
     )
 
     # Main loop in the main thread
+    logging.info("Starting processing loop...")
     processor.processorLoop()
 
 if __name__ == "__main__":

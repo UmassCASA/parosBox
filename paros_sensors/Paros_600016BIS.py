@@ -8,10 +8,12 @@ import os
 from dotenv import load_dotenv
 import socket
 import pathlib
+import logging
 
 class Paros_600016BIS(ParosSerialSensor):
 
     def __init__(self, box_id, sensor_id, data_loc, device_file):
+        # Supercontructor
         super().__init__(
             box_id,
             sensor_id,
@@ -24,9 +26,11 @@ class Paros_600016BIS(ParosSerialSensor):
             ser_timeout=1.0
         )
 
+        # Define Instance Vars
         self.box_id = box_id
 
-        # Verify serial number
+        # Verify serial number of barometer
+        # This also resets the barometer to a normal state if it was left sampling
         for i in range(2):
             # Do this twice because sometimes the barometer is caught in an already sampling state
             baroSerialNumReply = super().writeSerial('*0100SN', wait_reply=True)
@@ -34,25 +38,29 @@ class Paros_600016BIS(ParosSerialSensor):
         if "=" in baroSerialNumReply:
             baroSerialNum = baroSerialNumReply.strip().split("=")[1]
             if baroSerialNum == sensor_id:
-                print(f"Found barometer with serial number {baroSerialNum}")
+                logging.info(f"Found barometer with serial number {baroSerialNum}")
             else:
-                print(f"Barometer serial number {baroSerialNum} does not match {sensor_id}")
+                logging.critical(f"Barometer serial number {baroSerialNum} does not match {sensor_id}")
                 exit(1)
         else:
-            print(f"Barometer on device {device_file} either did not respond or returned a malformed response")
+            logging.critical(f"Barometer on device {device_file} either did not respond or returned a malformed response")
             exit(1)
 
     def samplingLoop(self):
 
-        # Set barometer clocks
+        # Set barometer clocks at the start of sampling
         utcTimeStr = datetime.datetime.now(datetime.UTC).strftime('%m/%d/%y %H:%M:%S')
-        time_reply = super().writeSerial('*0100EW*0100GR=' + utcTimeStr, wait_reply=True)
+
+        for i in range(2):
+            # Set time on barometer twice. Sometimes the first command doesn't hold
+            time_reply = super().writeSerial('*0100EW*0100GR=' + utcTimeStr, wait_reply=True)
+
         if time_reply.strip().split("=")[1].split(" ")[0] != utcTimeStr.split(" ")[0]:
-            print("Barometer was unable to set time")
+            logging.critical("Barometer was unable to set time")
             exit(1)
 
-        # Start P4 sampling
-        print("Starting Sampling...")
+        # Start P4 sampling (continuous pressure sampling)
+        logging.info("Starting Sampling...")
         super().writeSerial('*0100P4')
 
         # count failures
@@ -60,19 +68,24 @@ class Paros_600016BIS(ParosSerialSensor):
 
         while True:
             try:
+                # Kill the sampler if there are too many failures
                 if fail_count > 10:
-                    print("Stopping due to too many data failures")
+                    logging.critical("Stopping due to too many data failures")
                     self.stopSampling()
                     exit(1)
 
-                strIn = super().readSerial().strip()
+                # Read line
+                strIn = super().readSerial()
 
+                # strIn is none if it was unable to decode
                 if strIn is None:
                     fail_count += 1
                     continue
 
+                # strip whitespace
                 strIn = strIn.strip()
 
+                # split up line
                 in_parts = strIn.split(",")
                 
                 # Verify that this is actually a sample line
@@ -93,12 +106,13 @@ class Paros_600016BIS(ParosSerialSensor):
                 # form influxdb point data structure
                 p = influxdb_client.Point(self.box_id)
                 p.field("value", cur_value)
+                # Barometer time is stored as a field, not the primary time field
                 p.field("baro_time", self.__getTimeStr(baro_timestamp))
 
                 ParosSensor.addSample(self, p)
 
             except KeyboardInterrupt:
-                print("Stopping sampling")
+                logging.info("Stopping sampling...")
                 self.stopSampling()
                 exit(0)
 
@@ -113,10 +127,14 @@ class Paros_600016BIS(ParosSerialSensor):
         return timeStr
 
 if __name__ == "__main__":
+    # Setup logging
+    logging.basicConfig(level=logging.INFO)
+
     # load .env file
     file_path = pathlib.Path(__file__).parent.resolve()
     load_dotenv(f"{file_path}/../.env")
 
+    # Required environment vars
     required_envs = [
         "PAROS_DATA_LOCATION"
     ]
@@ -126,11 +144,13 @@ if __name__ == "__main__":
             print(f"Unable to find environment variable {env_item}. Does .env exist?")
             exit(1)
 
+    # Parse arguments
     parser = argparse.ArgumentParser()
     parser.add_argument("sensor_id", help="Sensor ID Number", type=str)
     parser.add_argument("device", help="Device file for serial connection", type=str)
     args = parser.parse_args()
 
+    # Create sensor object and start sampling
     cur_sensor = Paros_600016BIS(
         socket.gethostname(),
         args.sensor_id,

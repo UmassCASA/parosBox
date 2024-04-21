@@ -1,11 +1,12 @@
 from ParosSensor import ParosSensor
 import serial
+import logging
 
 class ParosSerialSensor(ParosSensor):
 
-    verbose = False
 
     def __init__(self, box_id, sensor_id, data_loc, device_file, ser_baud, ser_bytesize, ser_parity, ser_stopbits, ser_timeout):
+        # Super constructor
         super().__init__(box_id, sensor_id, data_loc)
 
         # Instance Vars
@@ -34,34 +35,28 @@ class ParosSerialSensor(ParosSensor):
             exit(1)
 
     def writeSerial(self, cmd, wait_reply=False):
+        # Encode string
         encoded_cmd = self.__encodeCMD(cmd)
-
-        if self.verbose:
-            print(f"Sending to device: {encoded_cmd}")
-
-        self.sensorPort.write(encoded_cmd)
+        logging.debug(f"Sending to device: {encoded_cmd}")
+        self.sensorPort.write(encoded_cmd)  # Send to device
 
         if wait_reply:
-            reply = self.sensorPort.readline()
-
-            if self.verbose:
-                print(f"Received Reply: {reply}")
+            reply = self.sensorPort.readline()  # Readline blocks until timeout
+            logging.debug(f"Received Reply: {reply}")
 
             try:
-                return reply.decode()
+                return reply.decode()  # Decode input
             except:
                 return None
 
         return None
     
     def readSerial(self):
-        cur_line = self.sensorPort.readline()
-
-        if self.verbose:
-            print(f"Received from Device: {cur_line}")
+        cur_line = self.sensorPort.readline()  # Readline blocks until timeout
+        logging.debug(f"Received from Device: {cur_line}")
 
         try:
-            return cur_line.decode()
+            return cur_line.decode()  # Decode input
         except:
             return None
 
