@@ -87,7 +87,7 @@ WantedBy=multi-user.target
 EOF
 
 sudo systemctl daemon-reload
-sudo systemctl enable frpc
+sudo systemctl enable frpc.service
 
 #
 # Sensor Daemons
