@@ -8,6 +8,7 @@ import socket
 import json
 import logging
 from time import sleep
+import re
 
 class parosProcessor:
 
@@ -24,6 +25,7 @@ class parosProcessor:
         self.data_loc = data_loc
         self.influx_bucket = influx_bucket
         self.influx_fail = False
+        self.hostname = socket.gethostname()
 
         # InfluxDB Objects
         self.influx_client = influxdb_client.InfluxDBClient(
@@ -35,7 +37,7 @@ class parosProcessor:
 
         # List of Sensors
         self.sensors = []
-        with open(f'sensor_configs/{socket.gethostname()}.json', 'r') as f:
+        with open(f'sensor_configs/{self.hostname}.json', 'r') as f:
             # load this box's sensor json file and parse the sensor_id
             sensors_json = json.load(f)['sensors']
             for sensor in sensors_json:
@@ -45,14 +47,13 @@ class parosProcessor:
         #
         # Pointer File Creation
         #
-        if not os.path.isfile(self.POINTER_PATH) or os.path.getsize(self.POINTER_PATH) == 0:
-            # Sets a new pointer only if the file doesn't exist or the file has a size of 0 (no data)
-            # The initial state is the current time of the system.
-            cur_time = datetime.datetime.now(datetime.UTC)
-            file_hour = cur_time.strftime('%Y-%m-%d-%H')
+        cur_time = datetime.datetime.now(datetime.UTC)
+        file_hour = cur_time.strftime('%Y-%m-%d-%H')
 
-            for sensor in self.sensors:
-                # Sets the initial pointer. Offset starts at 0
+        for sensor in self.sensors:
+            cur_pointer = self.getPointer(sensor)
+            if cur_pointer is None:
+                logging.info(f"Adding new sensor {sensor} to pointer file")
                 self.setPointer(sensor, file_hour, 0)
 
     def getPointer(self, sensor_id = None):
@@ -65,14 +66,20 @@ class parosProcessor:
                 if sensor_id is None:
                     return cur_pointer
                 else:
-                    return cur_pointer[sensor_id]
+                    if sensor_id in cur_pointer:
+                        return cur_pointer[sensor_id]
+                    else:
+                        return None
         else:
-            # return an empty dict if the file doesn't exist
-            return {}
+            # return none if the file doesn't exist
+            return None
 
     def setPointer(self, sensor_id, hour, offset):
         # get the current pointer to update its value
         cur_pointer = self.getPointer()
+        if cur_pointer is None:
+            cur_pointer = {}
+
         cur_pointer[sensor_id] = [hour, offset]
         with open(self.POINTER_PATH, 'wb') as f:
             # overwrite existing pickle file in binary mode
@@ -80,7 +87,7 @@ class parosProcessor:
             logging.debug(f"Updated pointer file for sensor {sensor_id} with values hour={hour} and offset={offset}")
 
     def __getLatestData(self, cur_path, cur_offset):
-        with open(cur_path, 'r') as f:
+        with open(cur_path, 'rb') as f:
             # Open indicated data file and seek to pointer offset
             # Storing the offset is much faster than reading the
             # whole file every time
@@ -97,7 +104,14 @@ class parosProcessor:
                     # Arrived at the end of the file
                     break
 
-                output_str += lp_str  # append line to output
+                # Validate lp_str and revert if needed
+                while not lp_str.startswith(self.hostname.encode()):
+                    # That's an issue! Go back one byte until the string is valid
+                    cur_offset -= 1
+                    f.seek(cur_offset)
+                    lp_str = f.readline()
+
+                output_str += lp_str.decode()  # append line to output
                 line_counter += 1  # incremement line counter
                 cur_offset += len(lp_str)  # update offset by the length of the line
 
@@ -135,9 +149,9 @@ class parosProcessor:
 
                 # Update the pointer ONLY after successfully sending to InfluxDB
                 self.setPointer(sensor, cur_file, cur_offset)
-            except:
+            except Exception as e:
                 if not self.influx_fail:
-                    logging.error("Connection to InfluxDB Lost")
+                    logging.error(f"Connection to InfluxDB Lost: {e}")
                     self.influx_fail = True
 
                 pass
