@@ -141,7 +141,7 @@ if __name__ == "__main__":
 
     for env_item in required_envs:
         if os.getenv(env_item) is None:
-            print(f"Unable to find environment variable {env_item}. Does .env exist?")
+            logging.critical(f"Unable to find environment variable {env_item}. Does .env exist?")
             exit(1)
 
     # Parse arguments

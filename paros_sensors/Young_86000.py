@@ -8,6 +8,7 @@ import pathlib
 from dotenv import load_dotenv
 import argparse
 import socket
+import logging
 
 class Young_86000(ParosSerialSensor):
 
@@ -31,9 +32,10 @@ class Young_86000(ParosSerialSensor):
 
         if input_parts[0] == self.sensor_id:
             # found sensor
-            print(f"Found anemometer with id {sensor_id}")
+            logging.info(f"Found anemometer with id {sensor_id}")
         else:
-            print(f"Unable to find anemometer with id {sensor_id}")
+            logging.critical(f"Unable to find anemometer with id {sensor_id}")
+            exit(1)
 
     def __xor_checksum(self, string):
         result = 0
@@ -55,7 +57,7 @@ class Young_86000(ParosSerialSensor):
         while True:
             try:
                 if fail_count > 10:
-                    print("Stopping due to too many data failures")
+                    logging.critical("Stopping due to too many data failures")
                     self.stopSampling()
                     exit(1)
 
@@ -102,7 +104,7 @@ class Young_86000(ParosSerialSensor):
                 ParosSensor.addSample(self, p)
 
             except KeyboardInterrupt:
-                print("Stopping sampling")
+                logging.info("Stopping sampling")
                 exit(0)
 
 if __name__ == "__main__":
@@ -116,7 +118,7 @@ if __name__ == "__main__":
 
     for env_item in required_envs:
         if os.getenv(env_item) is None:
-            print(f"Unable to find environment variable {env_item}. Does .env exist?")
+            logging.critical(f"Unable to find environment variable {env_item}. Does .env exist?")
             exit(1)
 
     parser = argparse.ArgumentParser()

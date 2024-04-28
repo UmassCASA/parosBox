@@ -31,7 +31,7 @@ class ParosSerialSensor(ParosSensor):
         try:
             self.sensorPort.open()
         except:
-            print(f"Unable to open serial port on device {device_file}. Is the device plugged in?")
+            logging.critical(f"Unable to open serial port on device {device_file}. Is the device plugged in?")
             exit(1)
 
     def writeSerial(self, cmd, wait_reply=False):
@@ -59,6 +59,9 @@ class ParosSerialSensor(ParosSensor):
             return cur_line.decode()  # Decode input
         except:
             return None
+        
+    def _getSensorPort(self):
+        return self.sensorPort
 
     def __encodeCMD(self, str):
         outStr = str + '\r\n'
