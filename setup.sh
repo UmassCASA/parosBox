@@ -6,6 +6,29 @@ if [ "$EUID" == 0 ]; then
     exit 1
 fi
 
+arg_new=0
+arg_packages=0
+arg_venv=0
+arg_frp=0
+arg_sensors=0
+arg_processor=0
+
+for arg in "$@"; do
+    if [[ "$arg" == "--new" ]]; then
+        arg_new=1
+    elif [[ "$arg" == "--packages" ]]; then
+        arg_packages=1
+    elif [[ "$arg" == "--venv" ]]; then
+        arg_venv=1
+    elif [[ "$arg" == "--frp" ]]; then
+        arg_frp=1
+    elif [[ "$arg" == "--sensors" ]]; then
+        arg_sensors=1
+    elif [[ "$arg" == "--processor" ]]; then
+        arg_processor=1
+    fi
+done
+
 #
 # Set up Environment
 #
@@ -18,38 +41,39 @@ source .env
 #
 # Create DIRS
 #
-mkdir -p $PAROS_DATA_LOCATION
-mkdir -p $PAROS_FRP_LOCATION
+if [[ $arg_new -eq 1 ]]; then
+    mkdir -p $PAROS_DATA_LOCATION
+    mkdir -p $PAROS_FRP_LOCATION
+fi
 
 #
 # Install APT Packages
 #
-sudo apt install python3-venv python3-dev
+if [[ $arg_new -eq 1 ]] || [[ $arg_packages -eq 1 ]]; then
+    sudo apt install python3-venv python3-dev prometheus-node-exporter
+fi
 
 #
 # Python Setup
 #
-python3 -m venv $PAROS_VENV_LOCATION
-source $PAROS_VENV_LOCATION/bin/activate
-pip install -r requirements.txt
-
-#
-# Prometheus
-#
-sudo apt install prometheus-node-exporter
-sudo systemctl enable prometheus-node-exporter
+if [[ $arg_new -eq 1 ]] || [[ $arg_venv -eq 1 ]]; then
+    python3 -m venv $PAROS_VENV_LOCATION
+    source $PAROS_VENV_LOCATION/bin/activate
+    pip install -r requirements.txt
+fi
 
 #
 # FRPC
 #
-FRP_DOWNLOAD="https://github.com/fatedier/frp/releases/download/v0.52.3/frp_0.52.3_linux_arm64.tar.gz"
-wget -nv $FRP_DOWNLOAD -O /tmp/frp.tar.gz
-tar -xf /tmp/frp.tar.gz -C /tmp
-sudo cp /tmp/frp*/frpc /usr/local/bin/
-sudo chmod +x /usr/local/bin/frpc
-rm -rf /tmp/frp*
+if [[ $arg_new -eq 1 ]] || [[ $arg_frp -eq 1 ]]; then
+    FRP_DOWNLOAD="https://github.com/fatedier/frp/releases/download/v0.52.3/frp_0.52.3_linux_arm64.tar.gz"
+    wget -nv $FRP_DOWNLOAD -O /tmp/frp.tar.gz
+    tar -xf /tmp/frp.tar.gz -C /tmp
+    sudo cp /tmp/frp*/frpc /usr/local/bin/
+    sudo chmod +x /usr/local/bin/frpc
+    rm -rf /tmp/frp*
 
-cat > $PAROS_FRP_LOCATION/run.toml << EOF
+    cat > $PAROS_FRP_LOCATION/run.toml << EOF
 serverAddr = "$PAROS_FRP_HOST"
 serverPort = $PAROS_FRP_PORT
 auth.token = "$PAROS_FRP_TOKEN"
@@ -67,7 +91,7 @@ localPort = 9100
 remotePort = $((11000 + $PAROS_FRP_OFFSET))
 EOF
 
-sudo tee /etc/systemd/system/frpc.service > /dev/null << EOF
+    sudo tee /etc/systemd/system/frpc.service > /dev/null << EOF
 [Unit]
 Description=FRPC Daemon
 After=network-online.target
@@ -83,18 +107,20 @@ User=pi
 WantedBy=multi-user.target
 EOF
 
-sudo systemctl daemon-reload
-sudo systemctl enable frpc.service
+    sudo systemctl daemon-reload
+    sudo systemctl enable frpc.service
+fi
 
 #
 # Sensor Daemons
 #
-jq -c '.sensors[]' sensor_configs/$THIS_HOSTNAME.json | while read -r sensor; do
-    driver=$(echo "$sensor" | jq -r '.driver')
-    sensor_id=$(echo "$sensor" | jq -r '.sensor_id')
-    args=$(echo "$sensor" | jq -r '.args')
+if [[ $arg_new -eq 1 ]] || [[ $arg_sensors -eq 1 ]]; then
+    jq -c '.sensors[]' sensor_configs/$THIS_HOSTNAME.json | while read -r sensor; do
+        driver=$(echo "$sensor" | jq -r '.driver')
+        sensor_id=$(echo "$sensor" | jq -r '.sensor_id')
+        args=$(echo "$sensor" | jq -r '.args')
 
-    sudo tee /etc/systemd/system/paros-sampler-$sensor_id.service > /dev/null << EOF
+        sudo tee /etc/systemd/system/paros-sampler-$sensor_id.service > /dev/null << EOF
 [Unit]
 Description=Paros Sampler $sensor_id
 After=network-online.target,time-sync.target
@@ -111,14 +137,16 @@ User=pi
 WantedBy=multi-user.target
 EOF
 
-    sudo systemctl daemon-reload
-    sudo systemctl enable paros-sampler-$sensor_id.service
-done
+        sudo systemctl daemon-reload
+        sudo systemctl enable paros-sampler-$sensor_id.service
+    done
+fi
 
 #
 # Processor Daemon
 #
-sudo sudo tee /etc/systemd/system/paros-processor.service > /dev/null << EOF
+if [[ $arg_new -eq 1 ]] || [[ $arg_processor -eq 1 ]]; then
+    sudo sudo tee /etc/systemd/system/paros-processor.service > /dev/null << EOF
 [Unit]
 Description=Paros Processor
 After=network-online.target,time-sync.target
@@ -135,7 +163,8 @@ User=pi
 WantedBy=multi-user.target
 EOF
 
-sudo systemctl daemon-reload
-sudo systemctl enable paros-processor.service
+    sudo systemctl daemon-reload
+    sudo systemctl enable paros-processor.service
 
-echo "DONE. Reboot node!"
+    echo "DONE. Reboot node!"
+fi
