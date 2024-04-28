@@ -2,3 +2,4 @@ pyserial
 persistqueue
 influxdb-client
 python-dotenv
+RPi.GPIO

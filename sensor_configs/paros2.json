@@ -9,6 +9,11 @@
             "driver": "Paros_600016BIS.py",
             "sensor_id": "141908",
             "args": "/dev/serial/by-id/usb-Prolific_Technology_Inc._USB-Serial_Controller-if00-port0"
+        },
+        {
+            "driver": "MPU9250.py",
+            "sensor_id": "11",
+            "args": "/dev/serial/by-id/usb-FTDI_FT231X_USB_UART_D306EEAF-if00-port0 36"
         }
     ]
 }
