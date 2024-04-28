@@ -1,6 +1,5 @@
 pyserial
 persistqueue
 influxdb-client
-requests
+python-dotenv
 RPi.GPIO
-spidev
