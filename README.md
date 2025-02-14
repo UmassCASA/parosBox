@@ -16,6 +16,10 @@ Code deployed on paros raspbery PIs
 4. For the next few steps the PI needs internet access. Since the ethernet port is full, use your phone's hotspot which you set the credentials for in 1.(4). Keep in mind that you can also change these credentials by running the `sudo raspi-setup` command in the SSH window after the fact.
 5. Once you have internet access, run `sudo apt update` and `sudo apt install git`
 6. Ensure that you are in your home directory (`cd ~`) and run `git clone https://github.com/UmassCASA/parosBox.git parosBox`.
-7. Change directory: `cd parosBox` and clone the config directory. This is a private repo so it will ask for your github credentials, or you can use SSH key auth if you have that setup, or make a personal access token if you have 2 factor enabled and don't have SSH auth. `git clone https://github.com/UmassCASA/parosConfigs.git config`
-8. Run the setup script. `sudo ./setup.sh`
-9. Reboot the raspberry PI. On reboot, you should be able to access the SSH connection via the `mgh4` server. If that is true, disconnect your ethernet cable and connect the permanent internet source to the ethernet port, and turn off your phone's hotspot.
+7. Create your environment (this is custom to each deployment)
+    1. `cd parosBox` to chdir into that directory
+    2. `cp .env.example .env` and then run `nano .env` (or any text editor you want)
+    3. Fill in any blank values. Defaults are usually correct except `PAROS_INFLUXDB_TOKEN` (InfluxDB token with write access to parosbox data store), `PAROS_FRP_TOKEN` which is the common frps token from `mgh4.casa.umass.edu`, and `PAROS_FRP_OFFSET`, which must be unique for each box.
+    4. Create your sensor config JSON: `cd sensor_configs` and create a new JSON there with the sensors in the current box. Feel free to copy one that already exists to see what it should look like. Each sensor has a driver, device ID (usually serial number of the sensor), and device path, which should be `/dev/serial/by-id/<something>`. Use this path instead of something like `/dev/ttyS0` because the `S0` number might change between reboots.
+9. Run the setup script. `sudo ./setup.sh`
+10. Reboot the raspberry PI. On reboot, you should be able to access the SSH connection via the `mgh4` server. If that is true, disconnect your ethernet cable and connect the permanent internet source to the ethernet port, and turn off your phone's hotspot.
