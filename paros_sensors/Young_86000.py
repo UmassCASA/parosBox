@@ -27,7 +27,7 @@ class Young_86000(ParosSerialSensor):
 
         self.box_id = box_id
 
-        test_line = super().readSerial()
+        test_line = super().readSerial(b'\r')
         input_parts = test_line.split(" ")
 
         if input_parts[0] == self.sensor_id:
@@ -39,14 +39,14 @@ class Young_86000(ParosSerialSensor):
 
     def __xor_checksum(self, string):
         result = 0
-        
+
         # Finding the index of the asterisk in the string
         asterisk_index = string.find('*')
-        
+
         # Performing XOR operation on characters before the asterisk
         for char in string[:asterisk_index]:
             result ^= ord(char)
-        
+
         return result
 
     def samplingLoop(self):
@@ -61,7 +61,7 @@ class Young_86000(ParosSerialSensor):
                     self.stopSampling()
                     exit(1)
 
-                strIn = super().readSerial()
+                strIn = super().readSerial(b'\r')
 
                 if strIn is None:
                     fail_count += 1
@@ -100,6 +100,8 @@ class Young_86000(ParosSerialSensor):
                 p.field("direction", cur_direction)
                 p.field("u", u)
                 p.field("v", v)
+
+                print(p)
 
                 ParosSensor.addSample(self, p)
 
