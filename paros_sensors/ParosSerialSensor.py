@@ -50,16 +50,20 @@ class ParosSerialSensor(ParosSensor):
                 return None
 
         return None
-    
-    def readSerial(self):
-        cur_line = self.sensorPort.readline()  # Readline blocks until timeout
+
+    def readSerial(self, endline=''):
+        if endline != '':
+            cur_line = self.sensorPort.read_until(endline)
+        else:
+            cur_line = self.sensorPort.readline()  # Readline blocks until timeout
+
         logging.debug(f"Received from Device: {cur_line}")
 
         try:
             return cur_line.decode()  # Decode input
         except:
             return None
-        
+
     def _getSensorPort(self):
         return self.sensorPort
 
