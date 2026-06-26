@@ -36,7 +36,7 @@ class Young_81000(ParosSerialSensor):
                     logging.critical("Stopping due to too many data failures")
                     exit(1)
 
-                strIn = super().readSerial()
+                strIn = super().readSerial(b'\r')
 
                 if strIn is None:
                     fail_count += 1
